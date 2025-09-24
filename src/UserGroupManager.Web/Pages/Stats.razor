@@ -1,0 +1,55 @@
+﻿@page "/Stats"
+@attribute [Authorize]
+@inject HttpClient Http
+
+<PageTitle>Statistics</PageTitle>
+
+<h1>Application Statistics</h1>
+
+@if (userCount == null || groupStats == null)
+{
+    <p><em>Loading stats...</em></p>
+}
+else
+{
+    <div class="card mb-3">
+        <div class="card-header">Total Users</div>
+        <div class="card-body">
+            <h4 class="card-title">@userCount.Count</h4>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Users Per Group</div>
+        <div class="card-body">
+            <ul class="list-group">
+                @foreach (var stat in groupStats)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        @stat.GroupName
+                        <span class="badge bg-primary rounded-pill">@stat.UserCount</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+}
+
+
+@code {
+    private Models.TotalUserCountDTO? userCount;
+    private Models.GroupUserCountDTO[]? groupStats;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            userCount = await Http.GetFromJsonAsync<Models.TotalUserCountDTO>("api/stats/userCount");
+            groupStats = await Http.GetFromJsonAsync<Models.GroupUserCountDTO[]>("api/Stats/usersPerGroup");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching stats: {ex.Message}");
+        }
+    }
+}

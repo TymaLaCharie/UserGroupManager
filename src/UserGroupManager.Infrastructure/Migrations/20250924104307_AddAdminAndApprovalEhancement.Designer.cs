@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UserGroupManager.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using UserGroupManager.Infrastructure.Data;
 namespace UserGroupManager.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250924104307_AddAdminAndApprovalEhancement")]
+    partial class AddAdminAndApprovalEhancement
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -35,48 +38,6 @@ namespace UserGroupManager.Infrastructure.Migrations
                     b.HasIndex("PermissionsId");
 
                     b.ToTable("GroupPermission");
-
-                    b.HasData(
-                        new
-                        {
-                            GroupsId = 1,
-                            PermissionsId = 1
-                        },
-                        new
-                        {
-                            GroupsId = 1,
-                            PermissionsId = 2
-                        },
-                        new
-                        {
-                            GroupsId = 1,
-                            PermissionsId = 3
-                        },
-                        new
-                        {
-                            GroupsId = 1,
-                            PermissionsId = 4
-                        },
-                        new
-                        {
-                            GroupsId = 1,
-                            PermissionsId = 5
-                        },
-                        new
-                        {
-                            GroupsId = 2,
-                            PermissionsId = 2
-                        },
-                        new
-                        {
-                            GroupsId = 2,
-                            PermissionsId = 4
-                        },
-                        new
-                        {
-                            GroupsId = 2,
-                            PermissionsId = 5
-                        });
                 });
 
             modelBuilder.Entity("UserGroupManager.Domain.Entities.Group", b =>

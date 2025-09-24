@@ -1,0 +1,64 @@
+﻿@using UserGroupManager.Web.Models;
+@page "/admin/approvals"
+@attribute [Authorize(Policy = "CanManageUsers")]
+@inject HttpClient Http
+
+<PageTitle>User Approvals</PageTitle>
+<h3>Pending User Approvals</h3>
+
+@if (pendingUsers == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (!pendingUsers.Any())
+{
+    <p>No pending users to approve.</p>
+}
+else
+{
+    <table class="table">
+        <!-- ... table headers ... -->
+        <tbody>
+            @foreach (var user in pendingUsers)
+            {
+                <tr>
+                    <td>@user.FirstName @user.LastName</td>
+                    <td>@user.Email</td>
+                    <td>
+                        <button class="btn btn-success" @onclick="() => ApproveUser(user.Id)">Approve</button>
+                        <button class="btn btn-danger" @onclick="() => RejectUser(user.Id)">Decline</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<PendingUserDTO>? pendingUsers;
+
+    protected override async Task OnInitializedAsync() => await LoadUsers();
+
+    private async Task LoadUsers()
+    {
+        pendingUsers = await Http.GetFromJsonAsync<List<PendingUserDTO>>("api/admin/fetchPending");
+    }
+
+    private async Task ApproveUser(int userId)
+    {
+        var response = await Http.PostAsync($"api/admin/approveUser/{userId}", null);
+        if (response.IsSuccessStatusCode)
+        {
+            await LoadUsers(); 
+        }
+    }
+
+    private async Task RejectUser(int userId)
+    {
+        var response = await Http.PostAsync($"api/admin/rejectUser/{userId}", null);
+        if (response.IsSuccessStatusCode)
+        {
+            await LoadUsers();
+        }
+    }
+}

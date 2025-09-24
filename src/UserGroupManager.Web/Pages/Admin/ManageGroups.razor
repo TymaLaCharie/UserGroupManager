@@ -1,0 +1,107 @@
+﻿@using UserGroupManager.Web.Models;
+@page "/admin/users/{UserId:int}/groups"
+@attribute [Authorize(Policy = "CanManageGroups")]
+@inject HttpClient Http
+@inject NavigationManager NavManager
+
+<PageTitle>Manage User Groups</PageTitle>
+
+@if (user == null || allGroups == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <h3>Manage Groups for @user.FirstName @user.LastName</h3>
+
+    <EditForm OnValidSubmit="HandleUpdate">
+        <div class="card">
+            <div class="card-body">
+                <p>Select the groups this user should be a member of:</p>
+                @foreach (var group in allGroups)
+                {
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input"
+                                       Value="@groupSelections[group.Id]"
+                                       ValueChanged="@((bool value) => groupSelections[group.Id] = value)" />
+                        <label class="form-check-label">@group.Name</label>
+                    </div>
+                }
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    </EditForm>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mt-2">@errorMessage</div>
+    }
+}
+
+
+@code {
+    [Parameter]
+    public int UserId { get; set; }
+
+    private UserDTO? user;
+    private List<GroupDTO>? allGroups;
+    private Dictionary<int, bool> groupSelections = new Dictionary<int, bool>();
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userTask = Http.GetFromJsonAsync<UserDTO>($"api/admin/users/{UserId}");
+            var allGroupsTask = Http.GetFromJsonAsync<List<GroupDTO>>("api/admin/groups");
+            var currentUserGroupsTask = Http.GetFromJsonAsync<List<int>>($"api/admin/users/{UserId}/groups");
+
+            await Task.WhenAll(userTask, allGroupsTask, currentUserGroupsTask);
+
+            user = userTask.Result;
+            allGroups = allGroupsTask.Result;
+            var currentUserGroupIds = new HashSet<int>(currentUserGroupsTask.Result ?? new List<int>());
+
+            if (allGroups != null)
+            {
+                foreach (var group in allGroups)
+                {
+                    groupSelections[group.Id] = currentUserGroupIds.Contains(group.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+        }
+    }
+
+    private async Task HandleUpdate()
+    {
+        errorMessage = null;
+        // Get a list of IDs for the selected groups
+        var selectedGroupIds = groupSelections
+            .Where(kvp => kvp.Value == true)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        var response = await Http.PutAsJsonAsync($"api/admin/users/{UserId}/groups", selectedGroupIds);
+
+        if (response.IsSuccessStatusCode)
+        {
+            NavManager.NavigateTo("/users");
+        }
+        else
+        {
+            errorMessage = "Failed to update groups.";
+        }
+    }
+
+    private void Cancel()
+    {
+        NavManager.NavigateTo("/users");
+    }
+}

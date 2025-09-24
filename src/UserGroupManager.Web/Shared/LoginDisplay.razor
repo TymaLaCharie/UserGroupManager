@@ -1,0 +1,22 @@
+﻿@using UserGroupManager.Web.Services
+
+@inject AuthenticationService authenticationService
+@inject NavigationManager navManager
+
+<AuthorizeView>
+    <Authorized>
+        <span class="me-3" style="color:black">Hello, @context.User.Identity?.Name</span>
+        <button class="btn btn-link nav-link" @onclick="Logout">Logout</button>
+    </Authorized>
+    <NotAuthorized>
+        <a href="login" class="nav-link">Login</a>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private async Task Logout()
+    {
+        await authenticationService.LogoutAsync();
+        navManager.NavigateTo("/", forceLoad: true);
+    }
+}

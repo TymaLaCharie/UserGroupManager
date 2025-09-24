@@ -12,8 +12,9 @@ using UserGroupManager.Infrastructure.Data;
 
 namespace UserGroupManager.Api.Controllers
 {
-
-    public class AuthController : Controller
+    [Route("api/[controller]")]
+    [ApiController]
+    public class AuthController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
         private  readonly IConfiguration _configuration;
@@ -25,25 +26,55 @@ namespace UserGroupManager.Api.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult>Register(RegisterUserDTO request)
+        public async Task<IActionResult>Register([FromBody] RegisterUserDTO request)
         {
             if(await _context.Users.AnyAsync(u => u.Email == request.Email))
             {
                 return BadRequest("User with this email already Exist.");
             }
 
+            //As I dont have an Admin as of yet am gonna make the first person to register on this APP an Admin
+            var isFirstUser = !await _context.Users.AnyAsync();
+
             var newUser = new User
             {
                 FirstName = request.FirstName,
                 LastName = request.LastName,
+                Email = request.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                AccountUpdated = DateTime.UtcNow
+                AccountUpdated = DateTime.UtcNow,
+
+                //if this newUser is the first user am gonna make the user an Administrator and Approve immediately
+                IsAdmin = isFirstUser,
+                Status = isFirstUser ? UserStatus.Active : UserStatus.Pending
             };
+
+            if (isFirstUser)
+            {
+                var adminGroup = await _context.Groups.FirstOrDefaultAsync(g => g.Name == "Administrators");
+                if (adminGroup != null)
+                {
+                    var userGroupLink = new UserGroup
+                    {
+                        User = newUser,
+                        Group = adminGroup,
+                        Status = RequestStatus.Approved
+                    };
+                    _context.UserGroups.Add(userGroupLink);
+                }
+            }
 
             _context.Users.Add(newUser);
             await _context.SaveChangesAsync();
 
-            return Ok(new {Message ="User registered successfully."});
+            var message = isFirstUser
+             ? "Admin account created and approved."
+             : "Registration successful. Please wait for admin approval.";
+
+            return Ok(new 
+            {
+                Message = message 
+            });
 
         }
 
@@ -54,10 +85,22 @@ namespace UserGroupManager.Api.Controllers
 
             if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             {
-                return Unauthorized("Invalid email or password.");
+                return Unauthorized("Invalid credentials.");
+            }
+            if (user.Status != UserStatus.Active)
+            {
+                return Unauthorized("Your account is pending approval.");
             }
 
-            var authToken = GenerateJwtToken(user);
+            var permissions = await _context.UserGroups
+                .Where(ug => ug.UserId == user.Id && ug.Status == RequestStatus.Approved)
+                .SelectMany(ug => ug.Group.Permissions) 
+                .Select(p => p.Name)
+                .Distinct()
+                .ToListAsync();
+
+            var authToken = GenerateJwtToken(user, permissions); 
+
 
 
             return Ok(new
@@ -72,17 +115,22 @@ namespace UserGroupManager.Api.Controllers
             });
         }
 
-        private string GenerateJwtToken(User user)
+        private string GenerateJwtToken(User user, List<string> permissions)
         {
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier,user.Id.ToString()),
-                new Claim (ClaimTypes.Email,user.Email),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email),
                 new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}")
             };
 
+            foreach (var permission in permissions)
+            {
+                claims.Add(new Claim("permission", permission));
+            }
+
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {

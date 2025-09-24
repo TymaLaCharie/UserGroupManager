@@ -1,0 +1,49 @@
+﻿@using UserGroupManager.Web.Services
+
+@page "/login"
+@inject AuthenticationService authenticationService
+@inject NavigationManager NavManager
+
+<PageTitle>Login</PageTitle>
+
+<h3>Login</h3>
+
+<div class="card">
+    <div class="card-body">
+        <EditForm Model="@loginModel" OnValidSubmit="HandleLogin">
+            <DataAnnotationsValidator />
+            <div class="form-group">
+                <label>Email</label>
+                <InputText class="form-control" @bind-Value="loginModel.Email" />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <InputText type="password" class="form-control" @bind-Value="loginModel.Password" />
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Login</button>
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger mt-2">@errorMessage</div>
+            }
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private Models.LoginDTO loginModel = new Models.LoginDTO();
+    private string? errorMessage;
+
+    private async Task HandleLogin()
+    {
+        errorMessage = null;
+        var success = await authenticationService.LoginAsync(loginModel);
+        if (success)
+        {
+            NavManager.NavigateTo("/users", forceLoad: true);
+        }
+        else
+        {
+            errorMessage = "Invalid credentials.";
+        }
+    }
+}
