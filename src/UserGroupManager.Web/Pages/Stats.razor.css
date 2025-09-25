@@ -1,0 +1,59 @@
+﻿/* dashboard widgets */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.5rem;
+}
+
+/* Base style for all dashboard cards */
+.dashboard-card {
+    border: none;
+    border-radius: 15px;
+    color: white;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease-in-out;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-5px); 
+}
+
+/* Styling for the text inside the cards */
+.card-title-custom {
+    font-size: 1rem;
+    font-weight: 300;
+    opacity: 0.9;
+    margin-bottom: 0.5rem;
+}
+
+.card-metric {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* --- COLOR STYLES --- */
+/* We use linear gradients for a modern look like your example */
+
+.bg-purple {
+    background: linear-gradient(45deg, #6a11cb 0%, #2575fc 100%);
+}
+
+.bg-pink {
+    background: linear-gradient(45deg, #ff416c 0%, #ff4b2b 100%);
+}
+
+.bg-yellow {
+    background: linear-gradient(45deg, #f7971e 0%, #ffd200 100%);
+}
+
+.bg-teal {
+    background: linear-gradient(45deg, #11998e 0%, #38ef7d 100%);
+}
+
+.bg-blue {
+    background: linear-gradient(45deg, #00c6ff 0%, #0072ff 100%);
+}
