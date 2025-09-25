@@ -1,0 +1,131 @@
+﻿@using UserGroupManager.Web.Models;
+@page "/admin/users/{UserId:int}/groups"
+@attribute [Authorize(Policy = "CanManageGroups")]
+@inject HttpClient Http
+@inject NavigationManager NavManager
+@using UserGroupManager.Web.Models
+@implements IDisposable
+
+<PageTitle>Manage User Groups</PageTitle>
+
+@if (user == null || groupSelections == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <h3>Manage Groups for @user.FirstName @user.LastName</h3>
+
+    <EditForm Model="@groupSelections" OnValidSubmit="HandleUpdate">
+        <div class="card">
+            <div class="card-body">
+                <p>Select the groups this user should be a member of:</p>
+                <!-- Use a for loop instead of foreach -->
+                @for (var i = 0; i < groupSelections.Count; i++)
+                {
+                    var index = i; // Create a local variable for the index
+                                   <div class="form-check">
+                                       <!-- @bind-Value now works with the list indexer -->
+                                       <InputCheckbox class="form-check-input"
+                                                      @bind-Value="@groupSelections[index].IsSelected" />
+                                       <label class="form-check-label">@groupSelections[index].GroupName</label>
+                                   </div>
+                }
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    </EditForm>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mt-2">@errorMessage</div>
+    }
+}
+
+
+@code {
+    [Parameter]
+    public int UserId { get; set; }
+
+    private UserDTO? user;
+    // This is our new form model - a list of view models
+    private List<GroupSelectionViewModel>? groupSelections;
+    private string? errorMessage;
+    private CancellationTokenSource cts = new CancellationTokenSource();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var userTask = Http.GetFromJsonAsync<UserDTO>($"api/admin/users/{UserId}", cts.Token);
+            var allGroupsTask = Http.GetFromJsonAsync<List<GroupDTO>>("api/admin/groups", cts.Token);
+            var currentUserGroupsTask = Http.GetFromJsonAsync<List<int>>($"api/admin/users/{UserId}/groups", cts.Token);
+
+            await Task.WhenAll(userTask, allGroupsTask, currentUserGroupsTask);
+
+            user = userTask.Result;
+            var allGroups = allGroupsTask.Result;
+            var currentUserGroupIds = new HashSet<int>(currentUserGroupsTask.Result ?? new List<int>());
+
+            // Populate our new list-based model
+            if (allGroups != null)
+            {
+                groupSelections = allGroups.Select(group => new GroupSelectionViewModel
+                {
+                    GroupId = group.Id,
+                    GroupName = group.Name,
+                    IsSelected = currentUserGroupIds.Contains(group.Id)
+                }).ToList();
+            }
+        }
+        catch (OperationCanceledException) { /* Expected on dispose */ }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+        }
+    }
+
+    public void Dispose()
+    {
+        cts.Cancel();
+        cts.Dispose();
+    }
+
+    private async Task HandleUpdate()
+    {
+        errorMessage = null;
+        if (groupSelections == null) return;
+
+        var selectedGroupIds = groupSelections
+            .Where(gs => gs.IsSelected)
+            .Select(gs => gs.GroupId)
+            .ToList();
+
+        var response = await Http.PutAsJsonAsync($"api/admin/users/{UserId}/groups", selectedGroupIds);
+
+        if (response.IsSuccessStatusCode)
+        {
+            NavManager.NavigateTo("/users");
+        }
+        else
+        {
+            errorMessage = "Failed to update groups.";
+        }
+    }
+
+    private void Cancel()
+    {
+        NavManager.NavigateTo("/users");
+    }
+
+    // This model now represents one row in our form
+    public class GroupSelectionViewModel
+    {
+        public int GroupId { get; set; }
+        public string GroupName { get; set; } = string.Empty;
+        public bool IsSelected { get; set; }
+    }
+}

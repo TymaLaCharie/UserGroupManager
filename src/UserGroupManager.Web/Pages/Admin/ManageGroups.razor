@@ -1,107 +1,142 @@
 ﻿@using UserGroupManager.Web.Models;
-@page "/admin/users/{UserId:int}/groups"
+@page "/admin/groups"
 @attribute [Authorize(Policy = "CanManageGroups")]
 @inject HttpClient Http
 @inject NavigationManager NavManager
 
-<PageTitle>Manage User Groups</PageTitle>
+<PageTitle>Manage Groups</PageTitle>
 
-@if (user == null || allGroups == null)
+<h3>Manage Groups</h3>
+
+<div class="card mb-3">
+    <div class="card-header">Create New Group</div>
+    <div class="card-body">
+        <EditForm Model="@newGroup" OnValidSubmit="CreateGroup">
+            <DataAnnotationsValidator />
+            <div class="input-group">
+                <InputText @bind-Value="newGroup.Name" class="form-control" placeholder="New group name" />
+                <button type="submit" class="btn btn-success">Create</button>
+            </div>
+            <ValidationMessage For="@(() => newGroup.Name)" />
+        </EditForm>
+    </div>
+</div>
+
+@if (allGroups == null)
 {
-    <p><em>Loading...</em></p>
+    <p><em>Loading groups...</em></p>
 }
 else
 {
-    <h3>Manage Groups for @user.FirstName @user.LastName</h3>
-
-    <EditForm OnValidSubmit="HandleUpdate">
-        <div class="card">
-            <div class="card-body">
-                <p>Select the groups this user should be a member of:</p>
-                @foreach (var group in allGroups)
-                {
-                    <div class="form-check">
-                        <InputCheckbox class="form-check-input"
-                                       Value="@groupSelections[group.Id]"
-                                       ValueChanged="@((bool value) => groupSelections[group.Id] = value)" />
-                        <label class="form-check-label">@group.Name</label>
-                    </div>
-                }
-            </div>
-            <div class="card-footer">
-                <button type="submit" class="btn btn-primary">Save Changes</button>
-                <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
-            </div>
-        </div>
-    </EditForm>
-
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger mt-2">@errorMessage</div>
-    }
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Group Name</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var group in allGroups)
+            {
+                <tr>
+                    <td>@group.Name</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" @onclick="() => EditGroupPermissions(group.Id)">Manage Permissions</button>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteGroup(group.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
 }
 
+<!-- Edit Modal (only shows when editing a group) -->
+@if (editingGroup != null)
+{
+    <div class="modal show" tabindex="-1" style="display: block;" role="dialog">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Group</h5>
+                    <button type="button" class="btn-close" @onclick="CancelEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="@editingGroup" OnValidSubmit="UpdateGroup">
+                        <DataAnnotationsValidator />
+                        <div class="mb-3">
+                            <label class="form-label">Group Name</label>
+                            <InputText class="form-control" @bind-Value="editingGroup.Name" />
+                            <ValidationMessage For="@(() => editingGroup.Name)" />
+                        </div>
+                        <button type="submit" class="btn btn-success">Save Changes</button>
+                        <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
 
 @code {
-    [Parameter]
-    public int UserId { get; set; }
-
-    private UserDTO? user;
     private List<GroupDTO>? allGroups;
-    private Dictionary<int, bool> groupSelections = new Dictionary<int, bool>();
-    private string? errorMessage;
+    private UpdateGroupDTO newGroup = new();
+    private UpdateGroupDTO? editingGroup;
+    private int editingGroupId;
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            var userTask = Http.GetFromJsonAsync<UserDTO>($"api/admin/users/{UserId}");
-            var allGroupsTask = Http.GetFromJsonAsync<List<GroupDTO>>("api/admin/groups");
-            var currentUserGroupsTask = Http.GetFromJsonAsync<List<int>>($"api/admin/users/{UserId}/groups");
-
-            await Task.WhenAll(userTask, allGroupsTask, currentUserGroupsTask);
-
-            user = userTask.Result;
-            allGroups = allGroupsTask.Result;
-            var currentUserGroupIds = new HashSet<int>(currentUserGroupsTask.Result ?? new List<int>());
-
-            if (allGroups != null)
-            {
-                foreach (var group in allGroups)
-                {
-                    groupSelections[group.Id] = currentUserGroupIds.Contains(group.Id);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = $"Error loading data: {ex.Message}";
-        }
+        await LoadGroups();
     }
 
-    private async Task HandleUpdate()
+    private async Task LoadGroups()
     {
-        errorMessage = null;
-        // Get a list of IDs for the selected groups
-        var selectedGroupIds = groupSelections
-            .Where(kvp => kvp.Value == true)
-            .Select(kvp => kvp.Key)
-            .ToList();
+        allGroups = await Http.GetFromJsonAsync<List<GroupDTO>>("api/admin/groups");
+    }
 
-        var response = await Http.PutAsJsonAsync($"api/admin/users/{UserId}/groups", selectedGroupIds);
-
+    private async Task CreateGroup()
+    {
+        var response = await Http.PostAsJsonAsync("api/admin/groups", newGroup);
         if (response.IsSuccessStatusCode)
         {
-            NavManager.NavigateTo("/users");
-        }
-        else
-        {
-            errorMessage = "Failed to update groups.";
+            newGroup.Name = string.Empty;
+            await LoadGroups();
         }
     }
 
-    private void Cancel()
+    private void EditGroupPermissions(int groupId)
     {
-        NavManager.NavigateTo("/users");
+        NavManager.NavigateTo($"/admin/groups/{groupId}/permissions");
+    }
+
+    private void BeginEdit(GroupDTO groupToEdit)
+    {
+        editingGroupId = groupToEdit.Id;
+        editingGroup = new UpdateGroupDTO { Name = groupToEdit.Name };
+    }
+
+    private void CancelEdit()
+    {
+        editingGroup = null;
+    }
+
+    private async Task UpdateGroup()
+    {
+        if (editingGroup == null) return;
+        var response = await Http.PutAsJsonAsync($"api/admin/groups/{editingGroupId}", editingGroup);
+        if (response.IsSuccessStatusCode)
+        {
+            editingGroup = null;
+            await LoadGroups();
+        }
+    }
+
+    private async Task DeleteGroup(int groupId)
+    {
+        var response = await Http.DeleteAsync($"api/admin/groups/{groupId}");
+        if (response.IsSuccessStatusCode)
+        {
+            await LoadGroups();
+        }
     }
 }

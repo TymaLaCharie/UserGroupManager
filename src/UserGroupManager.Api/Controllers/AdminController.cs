@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using UserGroupManager.Api.DataTranferObjects;
 using UserGroupManager.Domain.Entities;
 using UserGroupManager.Infrastructure.Data;
 
@@ -74,37 +75,90 @@ namespace UserGroupManager.Api.Controllers
         }
 
         [HttpGet("groups")]
-        public async Task<IActionResult> GetAllGroups()
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<ActionResult<IEnumerable<GroupDTO>>> GetAllGroups()
         {
-            return Ok(await _context.Groups.ToListAsync());
+            return Ok(await _context.Groups
+            .Select(g => new GroupDTO { Id = g.Id, Name = g.Name })
+            .ToListAsync());
         }
 
         [HttpPost("groups")]
-        public async Task<IActionResult> CreateGroup([FromBody] string groupName)
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<IActionResult> CreateGroup([FromBody] UpdateGroupDTO createGroupDto)
         {
-            if (string.IsNullOrWhiteSpace(groupName))
-            {
+            if (string.IsNullOrWhiteSpace(createGroupDto.Name))
                 return BadRequest("Group name cannot be empty.");
-            }
 
-            var newGroup = new Group 
-            {
-                Name = groupName 
-            };
-
+            var newGroup = new Group { Name = createGroupDto.Name };
             _context.Groups.Add(newGroup);
-
             await _context.SaveChangesAsync();
 
-            return Ok(newGroup);
+            return Ok(new GroupDTO
+            {
+                Id = newGroup.Id, Name = newGroup.Name 
+            });
         }
+
+        [HttpGet("groups/{id}")]
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<ActionResult<GroupDTO>> GetGroup(int id)
+        {
+            var group = await _context.Groups
+                .Where(g => g.Id == id)
+                .Select(g => new GroupDTO { Id = g.Id, Name = g.Name })
+                .FirstOrDefaultAsync();
+
+            if (group == null)
+                return NotFound();
+
+            return Ok(group);
+        }
+
+        [HttpPut("groups/{id}")]
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<IActionResult> UpdateGroup(int id, [FromBody] UpdateGroupDTO updateGroupDto)
+        {
+            var group = await _context.Groups.FindAsync(id);
+            if (group == null)
+                return NotFound("Group not found.");
+
+            if (string.IsNullOrWhiteSpace(updateGroupDto.Name))
+                return BadRequest("Group name cannot be empty.");
+
+            group.Name = updateGroupDto.Name;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpDelete("groups/{id}")]
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<IActionResult> DeleteGroup(int id)
+        {
+            var group = await _context.Groups.FindAsync(id);
+            if (group == null)
+                return NotFound("Group not found.");
+
+            _context.Groups.Remove(group);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
 
         [HttpGet("users/{id}")]
         public async Task<IActionResult> GetUser(int id)
         {
             var user = await _context.Users
                 .Where(u => u.Id == id)
-                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email,u.Status })
+                .Select(u => new
+                {
+                    u.Id,
+                    u.FirstName,
+                    u.LastName,
+                    u.Email,
+                    Status = u.Status.ToString()
+                })
                 .FirstOrDefaultAsync();
 
             if (user == null)
@@ -114,6 +168,10 @@ namespace UserGroupManager.Api.Controllers
 
             return Ok(user);
         }
+
+        ///////////////////////////////////////////////////////////////////////////////
+        ///Group Membership Management Endpoints
+
 
         [HttpGet("users/{id}/groups")]
         public async Task<IActionResult> GetUserGroups(int id)
@@ -135,10 +193,10 @@ namespace UserGroupManager.Api.Controllers
                 return NotFound("User not found.");
             }
 
-            // Find the user in current group memberships
-            var currentUserGroups = _context.UserGroups.Where(ug => ug.UserId == id);
+            var currentUserGroups = await _context.UserGroups
+                .Where(ug => ug.UserId == id)
+                .ToListAsync(); 
 
-            // Remove the old memberships
             _context.UserGroups.RemoveRange(currentUserGroups);
 
             // Add the new memberships
@@ -153,6 +211,57 @@ namespace UserGroupManager.Api.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "User groups updated successfully." });
+        }
+
+
+
+         ///////////////////////////////////////////////////////////////////////////////
+
+        //Permissions Management Endpoints
+        // GET: /api/admin/permissions - Get a list of all possible permissions
+        [HttpGet("permissions")]
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<IActionResult> GetAllPermissions()
+        {
+            return Ok(await _context.Permissions
+                .Select(p => new { p.Id, p.Name })
+                .ToListAsync());
+        }
+
+        
+        [HttpGet("groups/{id}/permissions")]
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<IActionResult> GetGroupPermissions(int id)
+        {
+            var groupPermissions = await _context.Groups
+                .Where(g => g.Id == id)
+                .SelectMany(g => g.Permissions)
+                .Select(p => p.Id)
+                .ToListAsync();
+
+            return Ok(groupPermissions);
+        }
+
+        [HttpPut("groups/{id}/permissions")]
+        [Authorize(Policy = "CanManageGroups")]
+        public async Task<IActionResult> UpdateGroupPermissions(int id, [FromBody] List<int> permissionIds)
+        {
+            var group = await _context.Groups
+                .Include(g => g.Permissions)
+                .FirstOrDefaultAsync(g => g.Id == id);
+
+            if (group == null)
+                return NotFound("Group not found.");
+
+            var permissionsToSet = await _context.Permissions
+                .Where(p => permissionIds.Contains(p.Id))
+                .ToListAsync();
+
+            group.Permissions = permissionsToSet;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Group permissions updated successfully." });
         }
     }
 }

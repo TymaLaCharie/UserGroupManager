@@ -1,0 +1,97 @@
+﻿@page "/admin/groups/{GroupId:int}/permissions"
+@attribute [Authorize(Policy = "CanManageGroups")]
+@inject HttpClient Http
+@inject NavigationManager NavManager
+@using UserGroupManager.Web.Models
+
+<PageTitle>Manage Group Permissions</PageTitle>
+
+@if (group == null || permissionSelections == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <h3>Manage Permissions for "@group.Name" Group</h3>
+
+    <EditForm Model="@permissionSelections" OnValidSubmit="HandleUpdate">
+        <div class="card">
+            <div class="card-body">
+                <p>Select the permissions this group should have:</p>
+                @for (var i = 0; i < permissionSelections.Count; i++)
+                {
+                    var index = i;
+                    <div class="form-check">
+                        <InputCheckbox class="form-check-input"
+                                       @bind-Value="@permissionSelections[index].IsSelected" />
+                        <label class="form-check-label">@permissionSelections[index].PermissionName</label>
+                    </div>
+                }
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public int GroupId { get; set; }
+
+    private GroupDTO? group;
+    private List<PermissionSelectionViewModel>? permissionSelections;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var groupTask = Http.GetFromJsonAsync<GroupDTO>($"api/admin/groups/{GroupId}");
+            var allPermissionsTask = Http.GetFromJsonAsync<List<PermissionDTO>>("api/admin/permissions");
+            var currentGroupPermissionsTask = Http.GetFromJsonAsync<List<int>>($"api/admin/groups/{GroupId}/permissions");
+
+            await Task.WhenAll(groupTask, allPermissionsTask, currentGroupPermissionsTask);
+
+            group = groupTask.Result;
+            var allPermissions = allPermissionsTask.Result;
+            var currentPermissionIds = new HashSet<int>(currentGroupPermissionsTask.Result ?? new List<int>());
+
+            if (allPermissions != null)
+            {
+                permissionSelections = allPermissions.Select(p => new PermissionSelectionViewModel
+                {
+                    PermissionId = p.Id,
+                    PermissionName = p.Name,
+                    IsSelected = currentPermissionIds.Contains(p.Id)
+                }).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    private async Task HandleUpdate()
+    {
+        if (permissionSelections == null) return;
+
+        var selectedPermissionIds = permissionSelections
+            .Where(p => p.IsSelected)
+            .Select(p => p.PermissionId)
+            .ToList();
+
+        var response = await Http.PutAsJsonAsync($"api/admin/groups/{GroupId}/permissions", selectedPermissionIds);
+
+        if (response.IsSuccessStatusCode)
+        {
+            NavManager.NavigateTo("/admin/groups");
+        }
+    }
+
+    private void Cancel()
+    {
+        NavManager.NavigateTo("/admin/groups");
+    }
+}
